@@ -33,6 +33,7 @@ func getenv(name string) string {
 }
 
 func report(msg string) {
+	return
 	values := url.Values{}
 	values.Set("From", tiloApiFrom)
 	values.Set("To", tiloSmsTo)
@@ -55,23 +56,6 @@ func report(msg string) {
 		fmt.Printf("Report was rejected: %v\n", resp)
 	}
 	resp.Body.Close()
-}
-
-func lookup(hostname string) (net.IP, bool, error) {
-	addresses, err := net.LookupIP(hostname)
-	if err != nil {
-		return nil, false, fmt.Errorf("lookup %s: could not resolve", hostname)
-	}
-
-	for _, address := range addresses {
-		if address.To16() != nil {
-			return address, true, nil
-		} else if address.To4() != nil {
-			return address, false, nil
-		}
-	}
-
-	return nil, false, fmt.Errorf("lookup %s: no valid address found", hostname)
 }
 
 func generatePacket(ip6 bool) ([]byte, error) {
@@ -103,76 +87,97 @@ func generatePacket(ip6 bool) ([]byte, error) {
 	return message.Marshal(nil)
 }
 
-func main() {
-	var target net.IPAddr
+func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 	var conn *icmp.PacketConn
 	var err error
-	var ip6 bool
 	var msg *icmp.Message
 	var buffer []byte = make([]byte, 1500)
 
+	fmt.Printf("%s @ %v\n", host, ipAddr.String())
+
+	success = false
+
+	conn, err = icmp.ListenPacket("ip6:ipv6-icmp", "::")
+	if err != nil {
+		report(err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	err = conn.SetDeadline(time.Now().Add(time.Second * 5))
+	if err != nil {
+		report(err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	packet, err := generatePacket(true)
+	if err != nil {
+		report(err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	addr, err := net.ResolveIPAddr("ip6", ipAddr.String())
+	if err != nil {
+		report(err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	_, err = conn.WriteTo(packet, addr)
+	if err != nil {
+		report(err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	for {
+		n, _, err := conn.ReadFrom(buffer)
+		if err != nil {
+			report(err.Error())
+			fmt.Printf("%s: %s\n", host, err.Error())
+			break
+		}
+
+		msg, err = icmp.ParseMessage(ProtocolIPv6ICMP, buffer[:n])
+		if err != nil {
+			report(err.Error())
+			fmt.Printf("%s: %s\n", host, err.Error())
+			continue
+		}
+		if msg.Type == ipv6.ICMPTypeEchoReply {
+			return true
+		}
+	}
+	return
+}
+
+func main() {
+	var success bool
+
 	for _, host := range hosts {
-		target.IP, ip6, err = lookup(host)
+		recods, err := net.LookupIP(host)
 		if err != nil {
 			report(err.Error())
 			fmt.Printf("%s: %s\n", host, err.Error())
 			continue
 		}
-
-		if ip6 == true {
-			conn, err = icmp.ListenPacket("ip6:ipv6-icmp", "::")
-		} else {
-			conn, err = icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-		}
-		if err != nil {
-			report(err.Error())
-			fmt.Printf("%s: %s\n", host, err.Error())
-			continue
-		}
-		defer conn.Close()
-
-		err = conn.SetDeadline(time.Now().Add(time.Second * 5))
-		if err != nil {
-			report(err.Error())
-			fmt.Printf("%s: %s\n", host, err.Error())
-			continue
-		}
-
-		packet, err := generatePacket(ip6)
-		if err != nil {
-			report(err.Error())
-			fmt.Printf("%s: %s\n", host, err.Error())
-			continue
-		}
-		_, err = conn.WriteTo(packet, &target)
-		if err != nil {
-			report(err.Error())
-			fmt.Printf("%s: %s\n", host, err.Error())
-			continue
-		}
-
-		for {
-			n, _, err := conn.ReadFrom(buffer)
-			if err != nil {
-				report(err.Error())
-				fmt.Printf("%s: %s\n", host, err.Error())
-				break
-			}
-
-			if ip6 == true {
-				msg, err = icmp.ParseMessage(ProtocolIPv6ICMP, buffer[:n])
+		success = false
+		for _, record := range recods {
+			if record.To16() != nil && record.To4() == nil {
+				success = sendv6Msg(record, host)
 			} else {
-				msg, err = icmp.ParseMessage(ProtocolICMP, buffer[:n])
+				fmt.Printf("v4 isn't implemented yet for %s @ %v\n", host, record)
 			}
-			if err != nil {
-				report(err.Error())
-				fmt.Printf("%s: %s\n", host, err.Error())
-				continue
-			}
-			if msg.Type == ipv6.ICMPTypeEchoReply || msg.Type == ipv4.ICMPTypeEchoReply {
-				fmt.Printf("%s: Everything is fine\n", host)
+			if success == true {
 				break
 			}
+		}
+		if success == false {
+			fmt.Printf("%s can't be reached\n", host)
+
 		}
 	}
 
