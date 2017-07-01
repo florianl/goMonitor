@@ -87,6 +87,73 @@ func generatePacket(ip6 bool) ([]byte, error) {
 	return message.Marshal(nil)
 }
 
+func sendv4Msg(ipAddr net.IP, host string) (success bool) {
+	var conn *icmp.PacketConn
+	var err error
+	var msg *icmp.Message
+	var buffer []byte = make([]byte, 1500)
+
+	fmt.Printf("%s @ %v\n", host, ipAddr.String())
+
+	success = false
+
+	conn, err = icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		report("%s: Could not create socket\n%s\n", host, err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	err = conn.SetDeadline(time.Now().Add(time.Second * 5))
+	if err != nil {
+		report("%s: Could not set deadline for socket\n%s\n", host, err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	packet, err := generatePacket(false)
+	if err != nil {
+		report("%s: Could not generate IP packet\n%s\n", host, err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	addr, err := net.ResolveIPAddr("ip4", ipAddr.String())
+	if err != nil {
+		report("%s: Could not resolve IP\n%s\n", host, err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	_, err = conn.WriteTo(packet, addr)
+	if err != nil {
+		report("%s: Could not send message\n%s\n", host, err.Error())
+		fmt.Printf("%s: %s\n", host, err.Error())
+		return
+	}
+
+	for {
+		n, _, err := conn.ReadFrom(buffer)
+		if err != nil {
+			report("%s: Could not read reply\n%s\n", host, err.Error())
+			fmt.Printf("%s: %s\n", host, err.Error())
+			break
+		}
+
+		msg, err = icmp.ParseMessage(ProtocolICMP, buffer[:n])
+		if err != nil {
+			report("%s: Could no parse reply\n%s\n", host, err.Error())
+			fmt.Printf("%s: %s\n", host, err.Error())
+			continue
+		}
+		if msg.Type == ipv4.ICMPTypeEchoReply {
+			return true
+		}
+	}
+	return
+}
+
 func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 	var conn *icmp.PacketConn
 	var err error
@@ -169,7 +236,7 @@ func main() {
 			if record.To16() != nil && record.To4() == nil {
 				success = sendv6Msg(record, host)
 			} else {
-				fmt.Printf("v4 isn't implemented yet for %s @ %v\n", host, record)
+				success = sendv4Msg(record, host)
 			}
 			if success == true {
 				break
