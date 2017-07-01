@@ -32,8 +32,8 @@ func getenv(name string) string {
 	return v
 }
 
-func report(msg string) {
-	return
+func report(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args)
 	values := url.Values{}
 	values.Set("From", tiloApiFrom)
 	values.Set("To", tiloSmsTo)
@@ -99,7 +99,7 @@ func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 
 	conn, err = icmp.ListenPacket("ip6:ipv6-icmp", "::")
 	if err != nil {
-		report(err.Error())
+		report("%s: Could not create socket\n%s\n", host, err.Error())
 		fmt.Printf("%s: %s\n", host, err.Error())
 		return
 	}
@@ -107,28 +107,28 @@ func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 
 	err = conn.SetDeadline(time.Now().Add(time.Second * 5))
 	if err != nil {
-		report(err.Error())
+		report("%s: Could not set deadline for socket\n%s\n", host, err.Error())
 		fmt.Printf("%s: %s\n", host, err.Error())
 		return
 	}
 
 	packet, err := generatePacket(true)
 	if err != nil {
-		report(err.Error())
+		report("%s: Could not generate IP packet\n%s\n", host, err.Error())
 		fmt.Printf("%s: %s\n", host, err.Error())
 		return
 	}
 
 	addr, err := net.ResolveIPAddr("ip6", ipAddr.String())
 	if err != nil {
-		report(err.Error())
+		report("%s: Could not resolve IP\n%s\n", host, err.Error())
 		fmt.Printf("%s: %s\n", host, err.Error())
 		return
 	}
 
 	_, err = conn.WriteTo(packet, addr)
 	if err != nil {
-		report(err.Error())
+		report("%s: Could not send message\n%s\n", host, err.Error())
 		fmt.Printf("%s: %s\n", host, err.Error())
 		return
 	}
@@ -136,14 +136,14 @@ func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 	for {
 		n, _, err := conn.ReadFrom(buffer)
 		if err != nil {
-			report(err.Error())
+			report("%s: Could not read reply\n%s\n", host, err.Error())
 			fmt.Printf("%s: %s\n", host, err.Error())
 			break
 		}
 
 		msg, err = icmp.ParseMessage(ProtocolIPv6ICMP, buffer[:n])
 		if err != nil {
-			report(err.Error())
+			report("%s: Could no parse reply\n%s\n", host, err.Error())
 			fmt.Printf("%s: %s\n", host, err.Error())
 			continue
 		}
@@ -160,7 +160,7 @@ func main() {
 	for _, host := range hosts {
 		recods, err := net.LookupIP(host)
 		if err != nil {
-			report(err.Error())
+			report("%s: Could not resolve host to IP\t%s\n", host, err.Error())
 			fmt.Printf("%s: %s\n", host, err.Error())
 			continue
 		}
