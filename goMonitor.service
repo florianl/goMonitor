@@ -1,0 +1,19 @@
+[Unit]
+Description=Monitoring bot
+After=network.target
+
+[Service]
+Type=simple
+User=username
+WorkingDirectory=/home/username
+ExecStart=/home/username/goMonitor
+RestartSec=300
+
+# These credentials for twilio.com
+Environment=TWILIO_API_SID=xxx
+Environment=TWILIO_API_AUTH_TOKEN=xxx
+Environment=TWILIO_API_FROM=xxx
+Environment=TWILIO_SMS_TO=xxx
+
+[Install]
+WantedBy=multi-user.target
