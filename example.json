@@ -1,0 +1,7 @@
+{
+    "hosts": [
+        "golang.org",
+        "google.com",
+        "twitter.com"
+    ]
+}
