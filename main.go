@@ -2,10 +2,12 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,10 +21,14 @@ var (
 	tiloApiAuthToken = getenv("TWILIO_API_AUTH_TOKEN")
 	tiloApiFrom      = getenv("TWILIO_API_FROM")
 	tiloSmsTo        = getenv("TWILIO_SMS_TO")
-	hosts            = []string{"heise.de", "google.com", "twitter.com"}
+	defHosts         = []string{"heise.de", "google.com", "twitter.com"}
 	ProtocolIPv6ICMP = 58
 	ProtocolICMP     = 1
 )
+
+type monitoringBot struct {
+	Hosts []string `json:"hosts"`
+}
 
 func getenv(name string) string {
 	v := os.Getenv(name)
@@ -223,6 +229,20 @@ func sendv6Msg(ipAddr net.IP, host string) (success bool) {
 
 func main() {
 	var success bool
+	var hosts []string
+
+	if len(os.Args) == 2 {
+		file, err := ioutil.ReadFile(os.Args[1])
+		if err != nil {
+			fmt.Printf("Could not read %s: %s\n", os.Args[1], err.Error())
+			return
+		}
+		var config monitoringBot
+		json.Unmarshal(file, &config)
+		hosts = config.Hosts
+	} else {
+		hosts = defHosts
+	}
 
 	for _, host := range hosts {
 		recods, err := net.LookupIP(host)
