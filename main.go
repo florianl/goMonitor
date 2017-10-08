@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
@@ -21,7 +22,7 @@ var (
 	tiloApiAuthToken = getenv("TWILIO_API_AUTH_TOKEN")
 	tiloApiFrom      = getenv("TWILIO_API_FROM")
 	tiloSmsTo        = getenv("TWILIO_SMS_TO")
-	defHosts         = []string{"heise.de", "google.com", "twitter.com"}
+	defHosts         = []string{"google.com", "twitter.com"}
 	ProtocolIPv6ICMP = 58
 	ProtocolICMP     = 1
 )
@@ -231,8 +232,11 @@ func main() {
 	var success bool
 	var hosts []string
 
-	if len(os.Args) == 2 {
-		file, err := ioutil.ReadFile(os.Args[1])
+	file := flag.String("config", "", "json file, that contains all hosts to monitor")
+	flag.Parse()
+
+	if len(*file) != 0 {
+		file, err := ioutil.ReadFile(*file)
 		if err != nil {
 			fmt.Printf("Could not read %s: %s\n", os.Args[1], err.Error())
 			return
